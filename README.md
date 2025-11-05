@@ -44,7 +44,7 @@ metadata:
   namespace: user-namespace               # 사용자 네임스페이스
 spec:
   runtimeRef:
-    name: pytorch-simple                  # 고정값 (PyTorch Runtime 이름)
+    name: pytorch-runtime                 # 고정값 (PyTorch Runtime 이름)
 
   trainer:
     # ============================================================
@@ -148,7 +148,7 @@ metadata:
   namespace: user-namespace
 spec:
   runtimeRef:
-    name: tensorflow-distributed           # 고정값 (TensorFlow Runtime 이름)
+    name: tensorflow-runtime               # 고정값 (TensorFlow Runtime 이름)
 
   trainer:
     # UI 입력: 이미지 주소
@@ -327,7 +327,7 @@ def create_trainjob(
     trainjob_name = f"{user_id}-job-{int(time.time())}"
 
     # Runtime 이름 결정
-    runtime_name = "pytorch-simple" if framework == "pytorch" else "tensorflow-distributed"
+    runtime_name = "pytorch-runtime" if framework == "pytorch" else "tensorflow-runtime"
 
     # 프레임워크별 환경변수 설정 스크립트 생성
     if framework == "pytorch":
@@ -587,7 +587,7 @@ export MASTER_ADDR=${PET_MASTER_ADDR:-localhost}
 export MASTER_PORT=${PET_MASTER_PORT:-29500}
 ```
 
-**Runtime 이름**: `pytorch-simple`
+**Runtime 이름**: `pytorch-runtime`
 
 ---
 
@@ -599,7 +599,7 @@ source /shared-env/tf_config.env
 echo "TF_CONFIG: $TF_CONFIG"
 ```
 
-**Runtime 이름**: `tensorflow-distributed`
+**Runtime 이름**: `tensorflow-runtime`
 
 **⚠️ 추가 필요 사항**:
 - `initContainers`에 `PET_NNODES` 환경변수 설정 필수

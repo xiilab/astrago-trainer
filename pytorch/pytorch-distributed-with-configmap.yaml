@@ -5,7 +5,7 @@ metadata:
   namespace: kubeflow-system
 spec:
   runtimeRef:
-    name: pytorch-simple
+    name: pytorch-runtime
   trainer:
     image: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
     numNodes: 2  # Runtime의 기본값(1) 오버라이드
