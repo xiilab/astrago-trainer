@@ -42,6 +42,16 @@ spec:
             configMap:
               name: pytorch-distributed-train-script
               defaultMode: 0755
+        initContainers:
+          - name: pre-setup
+            image: busybox:1.36
+            command:
+              - sh
+              - -c
+              - |
+                echo "[pre-setup] node=${PET_NODE_RANK:-0} starting";
+                # 필요한 사전 작업을 여기에 추가 (예: 데이터 프리페치, 권한 설정 등)
+                true
         containers:
           - name: node
             volumeMounts:
