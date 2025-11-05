@@ -39,10 +39,22 @@ spec:
               name: tensorflow-distributed-train-script
               defaultMode: 0755
         initContainers:
+          # 기존 Runtime의 tf-config-generator에 필드 오버라이드 예시 (머지 대상)
           - name: tf-config-generator
             env:
               - name: PET_NNODES
                 value: "2"  # numNodes와 동일하게 설정
+              - name: TF_PORT
+                value: "2333"  # Runtime 기본값을 오버라이드
+          # 새 initContainer 추가 (Runtime에 없던 이름 → 추가됨)
+          - name: pre-setup
+            image: busybox:1.36
+            command:
+              - sh
+              - -c
+              - |
+                echo "[pre-setup] node=${PET_NODE_RANK:-0} starting";
+                true
         containers:
           - name: node
             volumeMounts:
