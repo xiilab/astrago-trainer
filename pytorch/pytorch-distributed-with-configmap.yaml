@@ -10,6 +10,19 @@ spec:
     image: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
     numNodes: 2  # Runtime의 기본값(1) 오버라이드
     # numProcPerNode 생략 → Runtime의 "auto" 사용
+    command:
+      - bash
+      - -c
+      - |
+        # PyTorch 환경변수 설정
+        export RANK=${PET_NODE_RANK:-0}
+        export LOCAL_RANK=${PET_LOCAL_RANK:-0}
+        export WORLD_SIZE=${PET_NNODES:-1}
+        export MASTER_ADDR=${PET_MASTER_ADDR:-localhost}
+        export MASTER_PORT=${PET_MASTER_PORT:-29500}
+
+        # 학습 코드 실행
+        python /workspace/scripts/train.py
     resourcesPerNode:
       limits:
         cpu: "4"

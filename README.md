@@ -1,334 +1,617 @@
-# Kubeflow Training Operator v2 - Backend Integration
+# Kubeflow Training Operator v2 - Backend 개발 가이드
 
-분산 ML 학습을 위한 Kubeflow Training Operator v2 통합 가이드입니다.
+백엔드 개발자를 위한 TrainJob 생성 가이드입니다.
+**UI에서 받은 값들을 TrainJob YAML의 어디에 넣어야 하는지** 명확하게 설명합니다.
+
+---
 
 ## 📋 목차
-- [개요](#개요)
-- [핵심 개념](#핵심-개념)
-- [디렉토리 구조](#디렉토리-구조)
-- [Backend 통합 가이드](#backend-통합-가이드)
-- [API 요청 예시](#api-요청-예시)
+- [UI 입력 → TrainJob 매핑](#ui-입력--trainjob-매핑)
+- [Backend 구현 가이드](#backend-구현-가이드)
+- [프레임워크별 차이점](#프레임워크별-차이점)
 - [배포 및 테스트](#배포-및-테스트)
 
 ---
 
-## 개요
+## UI 입력 → TrainJob 매핑
 
-### 지원 프레임워크
-- **PyTorch**: 자동 환경변수 변환 (PET → PyTorch 표준)
-- **TensorFlow**: 자동 TF_CONFIG 생성
+사용자가 UI에서 입력하는 값들과 TrainJob YAML 필드의 매핑 관계입니다.
 
-### 사용자 경험
-사용자는 **학습 코드만 작성**, 환경 설정은 자동화
+### 📥 UI 입력 항목
 
-### 멀티테넌트 지원
-각 사용자 네임스페이스에 독립적인 리소스 생성
-
----
-
-## 핵심 개념
-
-### 왜 이런 구조인가?
-
-**문제점**:
-1. ConfigMap은 같은 네임스페이스에서만 마운트 가능
-2. 사용자 네임스페이스가 동적으로 생성됨 (회원가입 시)
-3. System ConfigMap을 미리 만들 수 없음
-
-**해결책**:
-Backend가 TrainJob 생성 시 필요한 ConfigMap도 함께 생성
-
-### 리소스 구조
-
-```
-사용자 네임스페이스 (예: user-123)
-├── System ConfigMap       # 환경 설정 스크립트 (Backend가 템플릿에서 생성)
-├── User ConfigMap         # 사용자 학습 코드 (Backend가 동적 생성)
-└── TrainJob              # 학습 작업 (Backend가 생성)
-```
-
-### 처리 흐름
-
-```
-사용자 요청 (학습 코드 + 설정)
-    ↓
-Backend API
-    ↓
-1. System ConfigMap 생성 (이미 있으면 skip)
-2. User ConfigMap 생성
-3. TrainJob 생성
-    ↓
-Kubernetes가 자동으로:
-    - Pod 생성
-    - 환경변수 설정
-    - 학습 실행
-```
+| UI 항목 | 설명 | 예시 값 |
+|---------|------|---------|
+| **이미지 주소** | 학습에 사용할 Docker 이미지 | `pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime` |
+| **CPU** | 컨테이너당 CPU 요청/제한 | `2` / `4` |
+| **MEMORY** | 컨테이너당 메모리 요청/제한 | `8Gi` / `16Gi` |
+| **GPU** | 컨테이너당 GPU 개수 | `1` |
+| **분산학습 노드 개수** | 학습에 사용할 노드(워커) 수 | `2` |
+| **볼륨 마운트** | 소스코드, 데이터셋, 모델 저장소 | `[{"name": "code", "path": "/workspace"}, ...]` |
+| **커맨드** | 컨테이너 실행 명령 | `python /workspace/scripts/train.py` |
+| **환경변수** | 사용자 정의 환경변수 | `[{"name": "EPOCHS", "value": "10"}, ...]` |
 
 ---
 
-## 디렉토리 구조
+### 🎯 TrainJob YAML 매핑
 
-```
-kubeflow-training-integration/
-├── README.md                          # 이 문서
-├── pytorch/
-│   ├── pytorch-pet-setup.yaml         # System ConfigMap 템플릿
-│   ├── pytorch-runtime-simple.yaml    # Runtime (관리자 설치)
-│   ├── pytorch-train-script-configmap.yaml    # User ConfigMap 예시
-│   └── pytorch-distributed-with-configmap.yaml # TrainJob 템플릿
-└── tensorflow/
-    ├── tensorflow-tf-config-generator.yaml     # System ConfigMap 템플릿
-    ├── tensorflow-runtime.yaml                 # Runtime (관리자 설치)
-    ├── tensorflow-train-script-configmap.yaml  # User ConfigMap 예시
-    └── tensorflow-distributed-with-configmap.yaml # TrainJob 템플릿
-```
+#### **PyTorch TrainJob 예시**
 
-### 파일 역할
-
-| 파일 | 역할 | Backend 처리 |
-|------|------|-------------|
-| `*-runtime*.yaml` | Runtime 정의 | ❌ 관리자가 클러스터에 설치 |
-| `*-pet-setup.yaml` | PyTorch 환경설정 템플릿 | ✅ 사용자 네임스페이스에 생성 |
-| `*-tf-config-generator.yaml` | TensorFlow 환경설정 템플릿 | ✅ 사용자 네임스페이스에 생성 |
-| `*-train-script-configmap.yaml` | User ConfigMap 예시 | ✅ 사용자 코드로 동적 생성 |
-| `*-distributed-with-configmap.yaml` | TrainJob 템플릿 | ✅ 사용자 요청에 맞게 생성 |
-
----
-
-## Backend 통합 가이드
-
-### 필수 처리 3단계
-
-#### 1단계: System ConfigMap 생성
-
-**목적**: 환경 설정 스크립트를 사용자 네임스페이스에 생성
-
-**PyTorch**:
-```python
-# 템플릿 파일: pytorch/pytorch-pet-setup.yaml
-# 내용: PET 환경변수를 PyTorch 표준으로 변환하는 shell script
-
-# Backend 처리
-system_configmap = load_yaml('pytorch/pytorch-pet-setup.yaml')
-system_configmap['metadata']['namespace'] = user_namespace
-
-# Kubernetes API로 생성 (idempotent - 이미 있으면 skip)
-try:
-    create_configmap(system_configmap)
-except AlreadyExistsError:
-    pass  # 같은 사용자가 여러 TrainJob 생성 가능
-```
-
-**TensorFlow**:
-```python
-# 템플릿 파일: tensorflow/tensorflow-tf-config-generator.yaml
-# 내용: TF_CONFIG JSON을 자동 생성하는 shell script
-
-# Backend 처리 (PyTorch와 동일)
-system_configmap = load_yaml('tensorflow/tensorflow-tf-config-generator.yaml')
-system_configmap['metadata']['namespace'] = user_namespace
-create_configmap(system_configmap)
-```
-
-**중요**: System ConfigMap은 **idempotent**입니다. 같은 사용자가 여러 TrainJob을 만들 수 있으므로 이미 존재하면 skip합니다.
-
----
-
-#### 2단계: User ConfigMap 생성
-
-**목적**: 사용자가 작성한 학습 코드를 ConfigMap으로 저장
-
-```python
-user_configmap = {
-    "apiVersion": "v1",
-    "kind": "ConfigMap",
-    "metadata": {
-        "name": f"{user_id}-train-script",  # 예: user123-train-script
-        "namespace": user_namespace
-    },
-    "data": {
-        "train.py": training_code  # 사용자가 업로드한 Python 코드
-    }
-}
-
-create_configmap(user_configmap)
-```
-
----
-
-#### 3단계: TrainJob 생성
-
-**목적**: 학습 작업 생성
-
-```python
-# 템플릿 파일 로드
-trainjob = load_yaml('pytorch/pytorch-distributed-with-configmap.yaml')
-
-# 동적 설정
-trainjob['metadata']['name'] = f"{user_id}-job-{timestamp}"
-trainjob['metadata']['namespace'] = user_namespace
-trainjob['spec']['trainer']['numNodes'] = num_nodes
-trainjob['spec']['trainer']['resourcesPerNode']['limits']['nvidia.com/gpu'] = str(gpu_per_node)
-trainjob['spec']['trainer']['resourcesPerNode']['limits']['cpu'] = str(cpu_per_node)
-trainjob['spec']['trainer']['resourcesPerNode']['limits']['memory'] = memory_per_node
-
-# User ConfigMap 이름 연결
-for override in trainjob['spec']['podTemplateOverrides']:
-    for volume in override['spec']['volumes']:
-        if volume['name'] == 'train-script':
-            volume['configMap']['name'] = f"{user_id}-train-script"
-
-# TrainJob 생성
-create_custom_resource(
-    group="trainer.kubeflow.org",
-    version="v1alpha1",
-    plural="trainjobs",
-    namespace=user_namespace,
-    body=trainjob
-)
-```
-
----
-
-### 프레임워크별 차이점
-
-#### PyTorch
-
-**System ConfigMap**: `pytorch-pet-setup`
-```bash
-# Shell script 내용
-export RANK=$PET_NODE_RANK
-export WORLD_SIZE=$PET_NNODES
-export MASTER_ADDR=$PET_MASTER_ADDR
-export MASTER_PORT=$PET_MASTER_PORT
-export LOCAL_RANK=0
-```
-
-**TrainJob command**:
-```bash
-source /shared/setup_pytorch_env.sh  # 환경변수 설정
-python /workspace/scripts/train.py   # 사용자 코드 실행
-```
-
-#### TensorFlow
-
-**System ConfigMap**: `tensorflow-tf-config-generator`
-```bash
-# Shell script 내용
-export TF_CONFIG='{"cluster":{"worker":[...]},"task":{...}}'
-```
-
-**TrainJob command**:
-```bash
-source /shared/generate_tf_config.sh  # TF_CONFIG 생성
-python3 /workspace/scripts/train.py   # 사용자 코드 실행
-```
-
-**중요**: TensorFlow는 추가로 `PET_NNODES` 환경변수가 필요합니다.
 ```yaml
-trainer:
-  env:
-    - name: PET_NNODES
-      value: "2"  # numNodes와 동일하게 설정
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: user-job-12345                    # Backend가 생성 (user_id + timestamp)
+  namespace: user-namespace               # 사용자 네임스페이스
+spec:
+  runtimeRef:
+    name: pytorch-simple                  # 고정값 (PyTorch Runtime 이름)
+
+  trainer:
+    # ============================================================
+    # UI 입력: 이미지 주소
+    # ============================================================
+    image: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
+
+    # ============================================================
+    # UI 입력: 분산학습 노드 개수
+    # ============================================================
+    numNodes: 2
+
+    # ============================================================
+    # UI 입력: 커맨드
+    # ============================================================
+    command:
+      - bash
+      - -c
+      - |
+        # PyTorch 환경변수 설정 (자동 추가)
+        export RANK=${PET_NODE_RANK:-0}
+        export LOCAL_RANK=${PET_LOCAL_RANK:-0}
+        export WORLD_SIZE=${PET_NNODES:-1}
+        export MASTER_ADDR=${PET_MASTER_ADDR:-localhost}
+        export MASTER_PORT=${PET_MASTER_PORT:-29500}
+
+        # 사용자 입력 커맨드 (UI에서 받음)
+        python /workspace/scripts/train.py
+
+    # ============================================================
+    # UI 입력: CPU, MEMORY, GPU
+    # ============================================================
+    resourcesPerNode:
+      limits:
+        cpu: "4"                           # UI 입력: CPU 제한
+        memory: "16Gi"                     # UI 입력: MEMORY 제한
+        nvidia.com/gpu: "1"                # UI 입력: GPU 개수
+      requests:
+        cpu: "2"                           # UI 입력: CPU 요청
+        memory: "8Gi"                      # UI 입력: MEMORY 요청
+        nvidia.com/gpu: "1"                # GPU는 requests = limits
+
+  # ============================================================
+  # UI 입력: 볼륨 마운트
+  # ============================================================
+  podTemplateOverrides:
+    - targetJobs:
+        - name: node
+      spec:
+        volumes:
+          # 소스코드 볼륨
+          - name: train-script
+            configMap:
+              name: user-train-script      # Backend가 생성한 ConfigMap 이름
+              defaultMode: 0755
+
+          # 데이터셋 볼륨 (예시: PVC)
+          - name: dataset
+            persistentVolumeClaim:
+              claimName: user-dataset-pvc
+
+          # 모델 저장소 볼륨 (예시: PVC)
+          - name: models
+            persistentVolumeClaim:
+              claimName: user-models-pvc
+
+        containers:
+          - name: node
+            # ============================================================
+            # UI 입력: 환경변수
+            # ============================================================
+            env:
+              - name: EPOCHS                # 사용자 정의 환경변수
+                value: "10"
+              - name: BATCH_SIZE
+                value: "64"
+              - name: LEARNING_RATE
+                value: "0.001"
+
+            volumeMounts:
+              - name: train-script
+                mountPath: /workspace/scripts
+                readOnly: true
+              - name: dataset
+                mountPath: /data
+                readOnly: true
+              - name: models
+                mountPath: /models
+                readOnly: false
 ```
 
 ---
 
-## API 요청 예시
+#### **TensorFlow TrainJob 예시**
 
-### 학습 작업 생성
+```yaml
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: user-job-12345
+  namespace: user-namespace
+spec:
+  runtimeRef:
+    name: tensorflow-distributed           # 고정값 (TensorFlow Runtime 이름)
 
-**Request**:
-```json
-POST /api/trainjob/create
-{
-  "user_id": "user123",
-  "namespace": "user-123",
-  "framework": "pytorch",
-  "training_code": "import torch\nimport torch.nn as nn\n...",
-  "config": {
+  trainer:
+    # UI 입력: 이미지 주소
+    image: tensorflow/tensorflow:2.15.0-gpu
+
+    # UI 입력: 분산학습 노드 개수
+    numNodes: 2
+
+    # UI 입력: 커맨드
+    command:
+      - bash
+      - -c
+      - |
+        # TF_CONFIG 로드 (자동 추가)
+        source /shared-env/tf_config.env
+        echo "TF_CONFIG: $TF_CONFIG"
+
+        # 사용자 입력 커맨드
+        python3 /workspace/scripts/train.py
+
+    # UI 입력: CPU, MEMORY, GPU
+    resourcesPerNode:
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+        nvidia.com/gpu: "1"
+      requests:
+        cpu: "2"
+        memory: "8Gi"
+        nvidia.com/gpu: "1"
+
+  # UI 입력: 볼륨 마운트
+  podTemplateOverrides:
+    - targetJobs:
+        - name: node
+      spec:
+        volumes:
+          - name: train-script
+            configMap:
+              name: user-train-script
+              defaultMode: 0755
+          - name: dataset
+            persistentVolumeClaim:
+              claimName: user-dataset-pvc
+          - name: models
+            persistentVolumeClaim:
+              claimName: user-models-pvc
+
+        # ⚠️ TensorFlow 전용: initContainer에 PET_NNODES 설정 필요
+        initContainers:
+          - name: tf-config-generator
+            env:
+              - name: PET_NNODES
+                value: "2"                 # numNodes와 동일하게 설정
+
+        containers:
+          - name: node
+            # UI 입력: 환경변수
+            env:
+              - name: EPOCHS
+                value: "10"
+              - name: BATCH_SIZE
+                value: "64"
+
+            volumeMounts:
+              - name: train-script
+                mountPath: /workspace/scripts
+                readOnly: true
+              - name: dataset
+                mountPath: /data
+                readOnly: true
+              - name: models
+                mountPath: /models
+                readOnly: false
+```
+
+---
+
+## Backend 구현 가이드
+
+### 🔧 전체 처리 흐름
+
+```
+UI 요청
+  ↓
+Backend API
+  ↓
+1. User ConfigMap 생성 (사용자 소스코드)
+2. TrainJob YAML 생성 (위 템플릿 + UI 입력값)
+3. TrainJob 배포
+  ↓
+Kubernetes
+  ↓
+Pod 생성 및 학습 실행
+```
+
+---
+
+### 📝 구현 예시 (Python)
+
+#### **1단계: User ConfigMap 생성**
+
+```python
+def create_user_configmap(user_id: str, namespace: str, training_code: str) -> str:
+    """
+    사용자 학습 코드를 ConfigMap으로 생성
+
+    Returns:
+        ConfigMap 이름
+    """
+    configmap_name = f"{user_id}-train-script"
+
+    configmap = {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": configmap_name,
+            "namespace": namespace
+        },
+        "data": {
+            "train.py": training_code  # UI에서 받은 Python 코드
+        }
+    }
+
+    # Kubernetes API로 생성
+    k8s_core_v1.create_namespaced_config_map(
+        namespace=namespace,
+        body=configmap
+    )
+
+    return configmap_name
+```
+
+---
+
+#### **2단계: TrainJob 생성 함수**
+
+```python
+def create_trainjob(
+    user_id: str,
+    namespace: str,
+    framework: str,  # "pytorch" 또는 "tensorflow"
+    image: str,
+    num_nodes: int,
+    cpu_request: str,
+    cpu_limit: str,
+    memory_request: str,
+    memory_limit: str,
+    gpu_count: int,
+    command: str,
+    env_vars: List[Dict[str, str]],
+    volumes: List[Dict[str, Any]],
+    configmap_name: str
+) -> str:
+    """
+    TrainJob YAML 생성 및 배포
+
+    Args:
+        user_id: 사용자 ID
+        namespace: 사용자 네임스페이스
+        framework: "pytorch" 또는 "tensorflow"
+        image: Docker 이미지 주소
+        num_nodes: 분산학습 노드 개수
+        cpu_request/cpu_limit: CPU 리소스
+        memory_request/memory_limit: 메모리 리소스
+        gpu_count: GPU 개수
+        command: 사용자 실행 명령
+        env_vars: [{"name": "KEY", "value": "VALUE"}, ...]
+        volumes: [{"name": "vol1", "pvc": "pvc-name", "mountPath": "/data"}, ...]
+        configmap_name: 학습 코드 ConfigMap 이름
+
+    Returns:
+        TrainJob 이름
+    """
+    import time
+    trainjob_name = f"{user_id}-job-{int(time.time())}"
+
+    # Runtime 이름 결정
+    runtime_name = "pytorch-simple" if framework == "pytorch" else "tensorflow-distributed"
+
+    # 프레임워크별 환경변수 설정 스크립트 생성
+    if framework == "pytorch":
+        env_setup = """
+        export RANK=${PET_NODE_RANK:-0}
+        export LOCAL_RANK=${PET_LOCAL_RANK:-0}
+        export WORLD_SIZE=${PET_NNODES:-1}
+        export MASTER_ADDR=${PET_MASTER_ADDR:-localhost}
+        export MASTER_PORT=${PET_MASTER_PORT:-29500}
+        """
+    else:  # tensorflow
+        env_setup = """
+        source /shared-env/tf_config.env
+        echo "TF_CONFIG: $TF_CONFIG"
+        """
+
+    # 전체 커맨드 조합
+    full_command = f"""
+{env_setup}
+
+# 사용자 커맨드
+{command}
+"""
+
+    # 볼륨 및 볼륨 마운트 생성
+    volume_specs = []
+    volume_mounts = []
+
+    # 소스코드 볼륨 (필수)
+    volume_specs.append({
+        "name": "train-script",
+        "configMap": {
+            "name": configmap_name,
+            "defaultMode": 0o755
+        }
+    })
+    volume_mounts.append({
+        "name": "train-script",
+        "mountPath": "/workspace/scripts",
+        "readOnly": True
+    })
+
+    # 사용자 정의 볼륨 추가
+    for vol in volumes:
+        volume_specs.append({
+            "name": vol["name"],
+            "persistentVolumeClaim": {
+                "claimName": vol["pvc"]
+            }
+        })
+        volume_mounts.append({
+            "name": vol["name"],
+            "mountPath": vol["mountPath"],
+            "readOnly": vol.get("readOnly", False)
+        })
+
+    # TrainJob 생성
+    trainjob = {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "metadata": {
+            "name": trainjob_name,
+            "namespace": namespace
+        },
+        "spec": {
+            "runtimeRef": {
+                "name": runtime_name
+            },
+            "trainer": {
+                "image": image,
+                "numNodes": num_nodes,
+                "command": ["bash", "-c", full_command],
+                "resourcesPerNode": {
+                    "limits": {
+                        "cpu": cpu_limit,
+                        "memory": memory_limit,
+                        "nvidia.com/gpu": str(gpu_count)
+                    },
+                    "requests": {
+                        "cpu": cpu_request,
+                        "memory": memory_request,
+                        "nvidia.com/gpu": str(gpu_count)
+                    }
+                }
+            },
+            "podTemplateOverrides": [
+                {
+                    "targetJobs": [{"name": "node"}],
+                    "spec": {
+                        "volumes": volume_specs,
+                        "containers": [
+                            {
+                                "name": "node",
+                                "env": env_vars,
+                                "volumeMounts": volume_mounts
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+
+    # ⚠️ TensorFlow 전용: initContainer에 PET_NNODES 설정
+    if framework == "tensorflow":
+        trainjob["spec"]["podTemplateOverrides"][0]["spec"]["initContainers"] = [
+            {
+                "name": "tf-config-generator",
+                "env": [
+                    {
+                        "name": "PET_NNODES",
+                        "value": str(num_nodes)
+                    }
+                ]
+            }
+        ]
+
+    # Kubernetes API로 배포
+    k8s_custom.create_namespaced_custom_object(
+        group="trainer.kubeflow.org",
+        version="v1alpha1",
+        namespace=namespace,
+        plural="trainjobs",
+        body=trainjob
+    )
+
+    return trainjob_name
+```
+
+---
+
+#### **3단계: API 엔드포인트 예시**
+
+```python
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Dict, Any
+
+router = APIRouter()
+
+class VolumeMount(BaseModel):
+    name: str
+    pvc: str
+    mountPath: str
+    readOnly: bool = False
+
+class TrainJobRequest(BaseModel):
+    user_id: str
+    namespace: str
+    framework: str  # "pytorch" or "tensorflow"
+    training_code: str
+    image: str
+    num_nodes: int
+    cpu_request: str
+    cpu_limit: str
+    memory_request: str
+    memory_limit: str
+    gpu_count: int
+    command: str
+    env_vars: List[Dict[str, str]] = []
+    volumes: List[VolumeMount] = []
+
+@router.post("/trainjob/create")
+async def create_training_job(request: TrainJobRequest):
+    """
+    학습 작업 생성 API
+    """
+    try:
+        # 1. User ConfigMap 생성
+        configmap_name = create_user_configmap(
+            user_id=request.user_id,
+            namespace=request.namespace,
+            training_code=request.training_code
+        )
+
+        # 2. TrainJob 생성
+        trainjob_name = create_trainjob(
+            user_id=request.user_id,
+            namespace=request.namespace,
+            framework=request.framework,
+            image=request.image,
+            num_nodes=request.num_nodes,
+            cpu_request=request.cpu_request,
+            cpu_limit=request.cpu_limit,
+            memory_request=request.memory_request,
+            memory_limit=request.memory_limit,
+            gpu_count=request.gpu_count,
+            command=request.command,
+            env_vars=request.env_vars,
+            volumes=[vol.dict() for vol in request.volumes],
+            configmap_name=configmap_name
+        )
+
+        return {
+            "status": "success",
+            "trainjob_name": trainjob_name,
+            "namespace": request.namespace
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+---
+
+#### **4단계: API 요청 예시**
+
+```bash
+curl -X POST http://localhost:8000/api/trainjob/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user123",
+    "namespace": "user-123",
+    "framework": "pytorch",
+    "training_code": "import torch\nimport torch.nn as nn\nprint(\"Training...\")",
+    "image": "pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime",
     "num_nodes": 2,
-    "gpu_per_node": 1,
-    "cpu_per_node": 4,
-    "memory_per_node": "16Gi"
-  }
-}
+    "cpu_request": "2",
+    "cpu_limit": "4",
+    "memory_request": "8Gi",
+    "memory_limit": "16Gi",
+    "gpu_count": 1,
+    "command": "python /workspace/scripts/train.py",
+    "env_vars": [
+      {"name": "EPOCHS", "value": "10"},
+      {"name": "BATCH_SIZE", "value": "64"}
+    ],
+    "volumes": [
+      {
+        "name": "dataset",
+        "pvc": "user123-dataset-pvc",
+        "mountPath": "/data",
+        "readOnly": true
+      },
+      {
+        "name": "models",
+        "pvc": "user123-models-pvc",
+        "mountPath": "/models",
+        "readOnly": false
+      }
+    ]
+  }'
 ```
 
-**Backend 처리 순서**:
-1. ✅ System ConfigMap 생성 (`pytorch-pet-setup`)
-2. ✅ User ConfigMap 생성 (`user123-train-script`)
-3. ✅ TrainJob 생성 (`user123-job-20251105130000`)
+---
 
-**Response**:
-```json
-{
-  "status": "success",
-  "trainjob_name": "user123-job-20251105130000",
-  "namespace": "user-123",
-  "created_at": "2025-11-05T13:00:00Z"
-}
+## 프레임워크별 차이점
+
+### PyTorch
+
+**환경변수 설정 (자동 추가)**:
+```bash
+export RANK=${PET_NODE_RANK:-0}
+export LOCAL_RANK=${PET_LOCAL_RANK:-0}
+export WORLD_SIZE=${PET_NNODES:-1}
+export MASTER_ADDR=${PET_MASTER_ADDR:-localhost}
+export MASTER_PORT=${PET_MASTER_PORT:-29500}
 ```
 
-### 학습 작업 상태 조회
+**Runtime 이름**: `pytorch-simple`
 
-**Request**:
-```
-GET /api/trainjob/{trainjob_name}/status?namespace={namespace}
-```
+---
 
-**Response**:
-```json
-{
-  "trainjob_name": "user123-job-20251105130000",
-  "state": "Complete",  // Running, Complete, Failed
-  "message": "jobset completed successfully",
-  "created_at": "2025-11-05T13:00:00Z",
-  "completed_at": "2025-11-05T13:05:00Z"
-}
+### TensorFlow
+
+**환경변수 설정 (자동 추가)**:
+```bash
+source /shared-env/tf_config.env
+echo "TF_CONFIG: $TF_CONFIG"
 ```
 
-**상태 종류**:
-- `Running`: 학습 진행 중
-- `Complete`: 학습 완료
-- `Failed`: 학습 실패
+**Runtime 이름**: `tensorflow-distributed`
 
-### 학습 로그 조회
+**⚠️ 추가 필요 사항**:
+- `initContainers`에 `PET_NNODES` 환경변수 설정 필수
+- `PET_NNODES` 값은 `trainer.numNodes`와 동일하게 설정
 
-**Request**:
+```yaml
+initContainers:
+  - name: tf-config-generator
+    env:
+      - name: PET_NNODES
+        value: "2"  # numNodes와 동일
 ```
-GET /api/trainjob/{trainjob_name}/logs?namespace={namespace}&worker=0
-```
-
-**Pod 이름 형식**:
-```
-{trainjob_name}-node-0-{worker_index}-{random_hash}
-
-예시:
-- user123-job-20251105130000-node-0-0-abc123  # Worker 0
-- user123-job-20251105130000-node-0-1-def456  # Worker 1
-```
-
-**Response**:
-```json
-{
-  "trainjob_name": "user123-job-20251105130000",
-  "worker": 0,
-  "logs": "PyTorch version: 2.2.2\n✅ 분산 학습 초기화 성공!\nEpoch 1/3...\n"
-}
-```
-
-### 학습 작업 삭제
-
-**Request**:
-```
-DELETE /api/trainjob/{trainjob_name}?namespace={namespace}
-```
-
-**Backend 처리**:
-1. TrainJob 삭제 → Pod 자동 삭제
-2. User ConfigMap 삭제 (선택)
-3. System ConfigMap 유지 (다른 작업이 사용 중일 수 있음)
 
 ---
 
@@ -347,12 +630,7 @@ kubectl apply -f tensorflow/tensorflow-runtime.yaml
 kubectl get clustertrainingruntimes
 ```
 
-**결과**:
-```
-NAME                   AGE
-pytorch-simple         1m
-tensorflow-distributed 1m
-```
+---
 
 ### 2. 테스트용 네임스페이스 생성
 
@@ -360,81 +638,67 @@ tensorflow-distributed 1m
 kubectl create namespace test-user
 ```
 
+---
+
 ### 3. PyTorch 테스트
 
 ```bash
-# 1. System ConfigMap 생성
-kubectl apply -f pytorch/pytorch-pet-setup.yaml -n test-user
-
-# 2. User ConfigMap 생성 (예시)
+# User ConfigMap 생성 (예시)
 kubectl apply -f pytorch/pytorch-train-script-configmap.yaml -n test-user
 
-# 3. TrainJob 생성
+# TrainJob 생성
 kubectl apply -f pytorch/pytorch-distributed-with-configmap.yaml -n test-user
 
-# 4. 상태 확인
+# 상태 확인
 kubectl get trainjob -n test-user
-kubectl get pods -n test-user
+kubectl get pods -n test-user | grep pytorch
 
-# 5. 로그 확인
-kubectl logs pytorch-distributed-configmap-node-0-0-<hash> -n test-user
+# 로그 확인
+kubectl logs <pod-name> -n test-user
 ```
 
 **성공 로그**:
 ```
-🔧 PyTorch 분산 학습 환경 설정 시작
-✅ PyTorch 환경변수 설정 완료!
-  - RANK: 0
-  - WORLD_SIZE: 2
 🎉 분산 학습 초기화 성공!
-Epoch 1/3...
+  - Rank: 0/2
+  - World Size: 2
+  - Device: cuda:0
+🚀 분산 학습 시작 (총 2개 노드)
+Epoch 1, Batch 0/469, Loss: 2.3085
+...
 🎉 PyTorch 분산 학습 완료!
 총 노드 수: 2
-최종 평균 Loss: 0.0349
+최종 평균 Loss: 0.0367
 ```
+
+---
 
 ### 4. TensorFlow 테스트
 
 ```bash
-# 1. System ConfigMap 생성
-kubectl apply -f tensorflow/tensorflow-tf-config-generator.yaml -n test-user
-
-# 2. User ConfigMap 생성 (예시)
+# User ConfigMap 생성 (예시)
 kubectl apply -f tensorflow/tensorflow-train-script-configmap.yaml -n test-user
 
-# 3. TrainJob 생성
+# TrainJob 생성
 kubectl apply -f tensorflow/tensorflow-distributed-with-configmap.yaml -n test-user
 
-# 4. 상태 확인
+# 상태 확인
 kubectl get trainjob -n test-user
-kubectl get pods -n test-user
+kubectl get pods -n test-user | grep tensorflow
 
-# 5. 로그 확인
-kubectl logs tensorflow-distributed-configmap-node-0-0-<hash> -n test-user
+# 로그 확인
+kubectl logs <pod-name> -n test-user -c node
 ```
 
 **성공 로그**:
 ```
-🔧 TF_CONFIG 생성 시작
-✅ TF_CONFIG 생성 완료!
+✅ TF_CONFIG 로드 완료: Worker 0
 ✅ Worker 0 initialized with 2 replicas
+🚀 분산 학습 시작 (총 2개 워커)
 Epoch 1/3...
 🎉 TensorFlow 분산 학습 완료!
 총 노드 수: 2
-최종 Accuracy: 0.9889
-```
-
-### 5. 정리
-
-```bash
-# TrainJob 삭제 (Pod도 자동 삭제)
-kubectl delete trainjob --all -n test-user
-
-# ConfigMap 삭제
-kubectl delete configmap --all -n test-user
-
-# 네임스페이스 삭제
-kubectl delete namespace test-user
+최종 Accuracy: 0.9884
 ```
 
 ---
@@ -459,45 +723,71 @@ rules:
     verbs: ["create", "get", "list", "update", "patch", "delete", "watch"]
 ```
 
-### 2. System ConfigMap은 Idempotent
+---
 
-- 같은 사용자가 여러 TrainJob 생성 가능
-- System ConfigMap은 처음 한 번만 생성
-- 이미 존재하면 생성 skip (에러 무시)
+### 2. GPU 리소스 설정
 
-### 3. 네임스페이스 격리
-
-각 사용자 네임스페이스는 완전히 독립적:
-- ConfigMap이 겹치지 않음
-- 다른 사용자에게 영향 없음
-
-### 4. 리소스 정리
-
-**TrainJob 삭제 시**:
-- ✅ TrainJob 삭제 → Pod 자동 삭제
-- ⚠️ User ConfigMap 삭제 (선택적)
-- ❌ System ConfigMap 유지 (재사용)
-
-### 5. GPU 리소스
-
-GPU 사용 시 다음 설정 필요:
+**GPU 사용**:
 ```yaml
 resourcesPerNode:
   limits:
-    nvidia.com/gpu: "1"  # GPU 개수
-  requests:
     nvidia.com/gpu: "1"
+  requests:
+    nvidia.com/gpu: "1"  # GPU는 requests = limits 동일하게
 ```
 
-GPU 없이 CPU만 사용:
+**GPU 없이 CPU만**:
 ```yaml
 resourcesPerNode:
   limits:
     cpu: "4"
-    memory: "8Gi"
+    memory: "16Gi"
   requests:
     cpu: "2"
-    memory: "4Gi"
+    memory: "8Gi"
+  # nvidia.com/gpu 필드 제거
+```
+
+---
+
+### 3. 볼륨 마운트 타입
+
+**ConfigMap**:
+```yaml
+- name: train-script
+  configMap:
+    name: user-train-script
+    defaultMode: 0755
+```
+
+**PVC (PersistentVolumeClaim)**:
+```yaml
+- name: dataset
+  persistentVolumeClaim:
+    claimName: user-dataset-pvc
+```
+
+**hostPath (테스트용만)**:
+```yaml
+- name: local-data
+  hostPath:
+    path: /data
+    type: Directory
+```
+
+---
+
+### 4. 리소스 정리
+
+**TrainJob 삭제**:
+```bash
+kubectl delete trainjob <trainjob-name> -n <namespace>
+```
+→ Pod 자동 삭제됨
+
+**ConfigMap 삭제**:
+```bash
+kubectl delete configmap <configmap-name> -n <namespace>
 ```
 
 ---
@@ -509,4 +799,5 @@ resourcesPerNode:
 **테스트 완료**:
 - ✅ PyTorch 분산 학습 (2 노드, GPU)
 - ✅ TensorFlow 분산 학습 (2 노드, GPU)
-- ✅ 멀티테넌트 격리 확인
+- ✅ 멀티 볼륨 마운트 (소스코드, 데이터셋, 모델)
+- ✅ 사용자 정의 환경변수
