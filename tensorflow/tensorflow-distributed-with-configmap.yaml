@@ -5,7 +5,7 @@ metadata:
   namespace: kubeflow-system
 spec:
   runtimeRef:
-    name: tensorflow-distributed
+    name: tensorflow-runtime
   trainer:
     image: tensorflow/tensorflow:2.15.0-gpu
     numNodes: 2  # Runtime의 기본값(1) 오버라이드
