@@ -621,7 +621,7 @@ initContainers:
 
 ```bash
 # PyTorch Runtime
-kubectl apply -f pytorch/pytorch-runtime-simple.yaml
+kubectl apply -f pytorch/pytorch-runtime.yaml
 
 # TensorFlow Runtime
 kubectl apply -f tensorflow/tensorflow-runtime.yaml
@@ -647,7 +647,7 @@ kubectl create namespace test-user
 kubectl apply -f pytorch/pytorch-train-script-configmap.yaml -n test-user
 
 # TrainJob 생성
-kubectl apply -f pytorch/pytorch-distributed-with-configmap.yaml -n test-user
+kubectl apply -f pytorch/pytorch-trainjob-with-configmap.yaml -n test-user
 
 # 상태 확인
 kubectl get trainjob -n test-user
@@ -680,7 +680,7 @@ Epoch 1, Batch 0/469, Loss: 2.3085
 kubectl apply -f tensorflow/tensorflow-train-script-configmap.yaml -n test-user
 
 # TrainJob 생성
-kubectl apply -f tensorflow/tensorflow-distributed-with-configmap.yaml -n test-user
+kubectl apply -f tensorflow/tensorflow-trainjob-with-configmap.yaml -n test-user
 
 # 상태 확인
 kubectl get trainjob -n test-user

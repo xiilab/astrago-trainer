@@ -26,3 +26,5 @@ spec:
                       env:
                         - name: PYTHONUNBUFFERED
                           value: "1"
+
+
