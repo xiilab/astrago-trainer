@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>분산 학습 설정 목업</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #121a33;
+        --panel-2: #0f1730;
+        --text: #e7ecff;
+        --muted: #9fb2ff;
+        --accent: #6ea8ff;
+        --accent-2: #8be9a6;
+        --danger: #ff6b6b;
+        --border: #243159;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Apple Color Emoji, Segoe UI Emoji;
+        background: radial-gradient(1200px 600px at 10% 0%, #111a35 0%, var(--bg) 45%);
+        color: var(--text);
+      }
+
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+
+      .panel {
+        background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px 18px 6px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        margin-bottom: 14px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+        align-items: start;
+      }
+
+      .col-4 { grid-column: span 4; }
+      .col-6 { grid-column: span 6; }
+      .col-8 { grid-column: span 8; }
+      .col-12 { grid-column: span 12; }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .label {
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 0.2px;
+      }
+
+      select, input[type="text"], input[type="number"] {
+        width: 100%;
+        background: #0d152c;
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 10px;
+        padding: 10px 12px;
+        outline: none;
+      }
+
+      .radio-group {
+        display: inline-flex;
+        gap: 12px;
+        background: #0d152c;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px;
+      }
+
+      .radio {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        cursor: pointer;
+        color: var(--muted);
+      }
+
+      .radio input { display: none; }
+      .radio.active { background: #14224b; color: var(--text); }
+
+      .slider {
+        display: grid;
+        grid-template-columns: 1fr 64px;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .slider input[type="range"] {
+        width: 100%;
+      }
+
+      .value {
+        width: 64px;
+        text-align: right;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .hint { color: var(--muted); font-size: 12px; }
+
+      .divider { height: 1px; background: var(--border); margin: 10px 0; }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #132351;
+        color: var(--accent);
+        border: 1px solid #1f3a7a;
+        font-size: 12px;
+      }
+
+      .grid-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .btn {
+        background: #1a2a5a;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+
+      .btn-primary { background: linear-gradient(90deg, #4466ff 0%, #6ea8ff 100%); border-color: #4466ff; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>분산 학습 설정</h1>
+        <span class="tag">목업 · 로컬 미리보기</span>
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <div class="col-6 field">
+            <label class="label">분산 학습 타입</label>
+            <select id="distType">
+              <option value="tensorflow">TensorFlow (Training Operator)</option>
+              <option value="pytorch">PyTorch (Training Operator)</option>
+              <option value="horovod">Horovod (MPI Operator)</option>
+            </select>
+          </div>
+          <div class="col-6 field">
+            <label class="label">노드*</label>
+            <div class="radio-group" id="nodeMode">
+              <label class="radio active" data-value="single"><input type="radio" name="node" checked />Single Node</label>
+              <label class="radio" data-value="multi"><input type="radio" name="node" />Multi Node</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 공통: 자원 프리셋 / GPU 선택 / 이미지 -->
+      <div class="panel">
+        <div class="row">
+          <div class="col-6 field">
+            <label class="label">GPU 선택</label>
+            <div class="hint">데모: 토글만 표시 (연동 미구현)</div>
+          </div>
+          <div class="col-6 field">
+            <label class="label">자원 프리셋*</label>
+            <select>
+              <option>사용자 설정 자원 할당</option>
+              <option>소형 (GPU 1 / CPU 4 / MEM 16GB)</option>
+              <option>중형 (GPU 2 / CPU 8 / MEM 32GB)</option>
+              <option>대형 (GPU 4 / CPU 16 / MEM 64GB)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Horovod (기존 UI 유지) -->
+      <div class="panel" id="horovodPanel">
+        <div class="row">
+          <div class="col-6 field">
+            <div class="label">Launcher*</div>
+            <div class="field">
+              <div class="label">CPU</div>
+              <div class="slider"><input type="range" min="0" max="100" value="0" /><span class="value" id="hvCPU">0 Core</span></div>
+            </div>
+            <div class="field">
+              <div class="label">MEM</div>
+              <div class="slider"><input type="range" min="0" max="610" value="0" /><span class="value" id="hvMem">0.0 GB</span></div>
+            </div>
+          </div>
+          <div class="col-6 field">
+            <label class="label">분산 학습 구성*</label>
+            <div class="field">
+              <div class="label">Worker 개수</div>
+              <input type="number" id="hvWorkers" min="1" value="2" />
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row">
+          <div class="col-12 field">
+            <div class="label">Worker*</div>
+            <div class="grid-3">
+              <div class="field">
+                <div class="label">GPU</div>
+                <div class="slider"><input type="range" min="0" max="8" value="0" /><span class="value" id="hvWgpu">0 개수</span></div>
+              </div>
+              <div class="field">
+                <div class="label">CPU</div>
+                <div class="slider"><input type="range" min="0" max="100" value="0" /><span class="value" id="hvWcpu">0.0 Core</span></div>
+              </div>
+              <div class="field">
+                <div class="label">MEM</div>
+                <div class="slider"><input type="range" min="0" max="610" value="0" /><span class="value" id="hvWmem">0.0 GB</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row">
+          <div class="col-12 field">
+            <div class="label">이미지*</div>
+            <div class="row">
+              <div class="col-4">
+                <div class="radio-group">
+                  <label class="radio active"><input type="radio" name="img" checked />Built-in Image</label>
+                  <label class="radio"><input type="radio" name="img" />Custom</label>
+                  <label class="radio"><input type="radio" name="img" />Container Image</label>
+                </div>
+              </div>
+              <div class="col-8">
+                <select>
+                  <option>torch1.12.1-horovod-cuda11.3</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Training Operator (TensorFlow / PyTorch) -->
+      <div class="panel hidden" id="trainOpPanel">
+        <div class="row">
+          <div class="col-4 field">
+            <label class="label">노드 개수 (Replicas)</label>
+            <input type="number" id="toReplicas" min="1" value="2" />
+            <div class="hint">Training Operator는 노드 수만 지정합니다.</div>
+          </div>
+          <div class="col-8 field">
+            <label class="label">Worker 리소스</label>
+            <div class="grid-3">
+              <div class="field">
+                <div class="label">GPU</div>
+                <div class="slider"><input type="range" min="0" max="8" value="1" /><span class="value" id="toGPU">1</span></div>
+              </div>
+              <div class="field">
+                <div class="label">CPU</div>
+                <div class="slider"><input type="range" min="0" max="100" value="4" /><span class="value" id="toCPU">4 Core</span></div>
+              </div>
+              <div class="field">
+                <div class="label">MEM</div>
+                <div class="slider"><input type="range" min="0" max="610" value="32" /><span class="value" id="toMEM">32 GB</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row">
+          <div class="col-12 field">
+            <div class="label">이미지*</div>
+            <div class="row">
+              <div class="col-4">
+                <div class="radio-group">
+                  <label class="radio active"><input type="radio" name="toimg" checked />Built-in Image</label>
+                  <label class="radio"><input type="radio" name="toimg" />Custom</label>
+                  <label class="radio"><input type="radio" name="toimg" />Container Image</label>
+                </div>
+              </div>
+              <div class="col-8">
+                <select id="toImage">
+                  <option>tensorflow:2.13-cuda11x</option>
+                  <option>pytorch:2.3-cuda12x</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <button class="btn">초기화</button>
+        <button class="btn btn-primary">설정 저장</button>
+      </div>
+    </div>
+
+    <script>
+      const $ = (sel) => document.querySelector(sel);
+      const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+      const distType = $('#distType');
+      const hv = $('#horovodPanel');
+      const to = $('#trainOpPanel');
+      const nodeMode = $('#nodeMode');
+
+      function syncActiveRadios() {
+        $$('#nodeMode .radio').forEach((l) => l.classList.remove('active'));
+        const active = $(`#nodeMode .radio[data-value="${nodeMode.dataset.value || 'single'}"]`);
+        if (active) active.classList.add('active');
+      }
+
+      nodeMode.dataset.value = 'single';
+      nodeMode.addEventListener('click', (e) => {
+        const label = e.target.closest('.radio');
+        if (!label) return;
+        nodeMode.dataset.value = label.dataset.value;
+        syncActiveRadios();
+      });
+
+      function togglePanels() {
+        const v = distType.value;
+        const isHv = v === 'horovod';
+        hv.classList.toggle('hidden', !isHv);
+        to.classList.toggle('hidden', isHv);
+        // 이미지 프리셋 예시
+        const toImage = $('#toImage');
+        if (!toImage) return;
+        if (v === 'tensorflow') {
+          toImage.value = 'tensorflow:2.13-cuda11x';
+        } else if (v === 'pytorch') {
+          toImage.value = 'pytorch:2.3-cuda12x';
+        }
+      }
+
+      distType.addEventListener('change', togglePanels);
+      togglePanels();
+
+      function bindSlider(rangeSel, valueSel, suffix = '') {
+        const range = document.querySelector(rangeSel);
+        const value = document.querySelector(valueSel);
+        if (!range || !value) return;
+        const fmt = (n) => Number(n).toLocaleString('en-US');
+        const update = () => (value.textContent = `${fmt(range.value)}${suffix}`);
+        range.addEventListener('input', update);
+        update();
+      }
+
+      bindSlider('#horovodPanel .field:nth-child(1) .field:nth-child(2) input', '#hvCPU', ' Core');
+      bindSlider('#horovodPanel .field:nth-child(1) .field:nth-child(3) input', '#hvMem', ' GB');
+      bindSlider('#horovodPanel #hvWgpu'.replace('#hvWgpu', ''), '#hvWgpu');
+      bindSlider('#horovodPanel .grid-3 .field:nth-child(2) input', '#hvWcpu', ' Core');
+      bindSlider('#horovodPanel .grid-3 .field:nth-child(3) input', '#hvWmem', ' GB');
+
+      bindSlider('#trainOpPanel .grid-3 .field:nth-child(1) input', '#toGPU');
+      bindSlider('#trainOpPanel .grid-3 .field:nth-child(2) input', '#toCPU', ' Core');
+      bindSlider('#trainOpPanel .grid-3 .field:nth-child(3) input', '#toMEM', ' GB');
+    </script>
+  </body>
+  </html>
+
+

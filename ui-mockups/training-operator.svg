@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="760" viewBox="0 0 1240 760">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a2752"/>
+      <stop offset="100%" stop-color="#0e1731"/>
+    </linearGradient>
+    <style>
+      .title{font:700 20px 'Inter', system-ui; fill:#e7ecff}
+      .label{font:500 12px 'Inter', system-ui; fill:#9fb2ff}
+      .value{font:600 12px 'Inter', system-ui; fill:#e7ecff}
+      .panel{fill:url(#g1);stroke:#243159;stroke-width:1;rx:14}
+      .chip{fill:#132351;stroke:#1f3a7a;stroke-width:1;rx:16}
+    </style>
+  </defs>
+
+  <rect width="1240" height="760" fill="#0b1020"/>
+  <text x="40" y="56" class="title">TensorFlow / PyTorch (Training Operator) · 단순화 UI</text>
+
+  <rect x="32" y="72" width="1176" height="84" class="panel"/>
+  <text x="60" y="112" class="label">분산 학습 타입</text>
+  <rect x="60" y="120" width="420" height="28" rx="8" fill="#0d152c" stroke="#243159"/>
+  <text x="72" y="139" class="value">TensorFlow | PyTorch (Training Operator)</text>
+
+  <!-- 노드 개수 + 리소스 -->
+  <rect x="32" y="172" width="1176" height="250" class="panel"/>
+  <text x="60" y="206" class="label">노드 개수 (Replicas)</text>
+  <rect x="240" y="190" width="120" height="28" rx="8" fill="#0d152c" stroke="#243159"/>
+  <text x="248" y="209" class="value">2</text>
+
+  <text x="60" y="248" class="label">Worker 리소스</text>
+  <text x="60" y="280" class="label">GPU</text>
+  <rect x="120" y="268" width="300" height="8" rx="4" fill="#243159"/>
+  <text x="430" y="274" class="value">1</text>
+  <text x="520" y="280" class="label">CPU</text>
+  <rect x="570" y="268" width="300" height="8" rx="4" fill="#243159"/>
+  <text x="880" y="274" class="value">4 Core</text>
+  <text x="60" y="320" class="label">MEM</text>
+  <rect x="120" y="308" width="300" height="8" rx="4" fill="#243159"/>
+  <text x="430" y="314" class="value">32 GB</text>
+
+  <!-- 이미지 -->
+  <rect x="32" y="444" width="1176" height="180" class="panel"/>
+  <text x="60" y="478" class="label">이미지*</text>
+  <rect x="118" y="460" width="280" height="28" class="chip"/>
+  <text x="140" y="479" class="value">Built-in Image</text>
+  <rect x="420" y="460" width="360" height="28" rx="8" fill="#0d152c" stroke="#243159"/>
+  <text x="432" y="479" class="value">tensorflow:2.13-cuda11x · pytorch:2.3-cuda12x</text>
+
+  <text x="32" y="706" class="label">Training Operator는 노드 수만 지정하며 Launcher/Worker 분리는 표시하지 않습니다.</text>
+</svg>
+
+
