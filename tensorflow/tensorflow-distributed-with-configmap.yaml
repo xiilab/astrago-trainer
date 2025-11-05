@@ -1,26 +1,14 @@
 apiVersion: trainer.kubeflow.org/v1alpha1
 kind: TrainJob
 metadata:
-  name: tensorflow-distributed-configmap
+  name: tensorflow-distributed-simple
   namespace: kubeflow-system
 spec:
   runtimeRef:
     name: tensorflow-distributed
   trainer:
     image: tensorflow/tensorflow:2.15.0-gpu
-    command:
-      - bash
-      - -c
-      - |
-        # 1단계: TF_CONFIG 생성 스크립트 실행 및 환경변수 설정
-        source /shared/generate_tf_config.sh
-
-        # 2단계: 사용자 학습 코드 실행
-        python3 /workspace/scripts/train.py
     numNodes: 2  # Runtime의 기본값(1) 오버라이드
-    env:
-      - name: PET_NNODES
-        value: "2"  # numNodes와 동일하게 설정
     resourcesPerNode:
       limits:
         cpu: "4"
@@ -30,26 +18,24 @@ spec:
         cpu: "2"
         memory: "8Gi"
         nvidia.com/gpu: "1"
-  # PodTemplateOverride를 사용해서 두 개의 ConfigMap 볼륨 마운트
+  # initContainer 설정 + 학습 스크립트 볼륨 마운트
   podTemplateOverrides:
     - targetJobs:
         - name: node
       spec:
         volumes:
-          - name: tf-config-generator  # TF_CONFIG 생성 스크립트
-            configMap:
-              name: tensorflow-tf-config-generator
-              defaultMode: 0755
-          - name: train-script          # 사용자 학습 코드
+          - name: train-script  # 사용자 학습 코드
             configMap:
               name: tensorflow-distributed-train-script
               defaultMode: 0755
+        initContainers:
+          - name: tf-config-generator
+            env:
+              - name: PET_NNODES
+                value: "2"  # numNodes와 동일하게 설정
         containers:
           - name: node
             volumeMounts:
-              - name: tf-config-generator
-                mountPath: /shared
-                readOnly: true
               - name: train-script
                 mountPath: /workspace/scripts
                 readOnly: true

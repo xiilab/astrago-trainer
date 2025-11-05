@@ -19,9 +19,92 @@ spec:
             spec:
               template:
                 spec:
+                  volumes:
+                    - name: shared-env
+                      emptyDir: {}
+
+                  initContainers:
+                    - name: tf-config-generator
+                      image: busybox:latest
+                      command:
+                        - sh
+                        - -c
+                        - |
+                          #!/bin/sh
+                          set -e
+
+                          echo "=========================================="
+                          echo "🔧 TF_CONFIG 생성 시작"
+                          echo "=========================================="
+
+                          # Hostname에서 정보 추출
+                          HOSTNAME=$(hostname)
+                          echo "Hostname: $HOSTNAME"
+
+                          JOB_NAME=$(echo $HOSTNAME | sed 's/-node-0-.*//')
+                          WORKER_INDEX=$(echo $HOSTNAME | grep -o '[0-9]*$')
+                          NUM_WORKERS=${PET_NNODES:-1}
+                          NAMESPACE=${NAMESPACE:-default}
+                          PORT=${TF_PORT:-2222}
+
+                          echo "Job Name: $JOB_NAME"
+                          echo "Worker Index: $WORKER_INDEX"
+                          echo "Total Workers: $NUM_WORKERS"
+                          echo "Namespace: $NAMESPACE"
+                          echo "Port: $PORT"
+
+                          # Worker 목록 생성
+                          WORKERS="["
+                          for i in $(seq 0 $((NUM_WORKERS-1))); do
+                              if [ $i -gt 0 ]; then
+                                  WORKERS="$WORKERS,"
+                              fi
+                              WORKER_ADDR="${JOB_NAME}-node-0-${i}.${JOB_NAME}.${NAMESPACE}.svc.cluster.local:${PORT}"
+                              WORKERS="$WORKERS\\\"${WORKER_ADDR}\\\""
+                          done
+                          WORKERS="$WORKERS]"
+
+                          # TF_CONFIG 파일에 저장
+                          cat > /shared-env/tf_config.env << EOF
+                          export TF_CONFIG="{\"cluster\":{\"worker\":$WORKERS},\"task\":{\"type\":\"worker\",\"index\":$WORKER_INDEX}}"
+                          EOF
+
+                          echo ""
+                          echo "✅ TF_CONFIG 생성 완료!"
+                          cat /shared-env/tf_config.env
+                          echo "=========================================="
+                      env:
+                        - name: NAMESPACE
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.namespace
+                        - name: PET_NNODES
+                          value: "1"
+                      volumeMounts:
+                        - name: shared-env
+                          mountPath: /shared-env
+
                   containers:
                     - name: node
                       image: tensorflow/tensorflow:2.15.0-gpu
+                      command:
+                        - bash
+                        - -c
+                        - |
+                          # initContainer에서 생성한 환경변수 로드
+                          source /shared-env/tf_config.env
+
+                          # TF_CONFIG 확인
+                          echo "Loaded TF_CONFIG: $TF_CONFIG"
+
+                          # 사용자 학습 코드 실행
+                          # TrainJob의 podTemplateOverrides에서 /workspace/scripts를 마운트하면 해당 경로 사용
+                          # 기본적으로는 현재 디렉토리의 train.py 실행
+                          if [ -f /workspace/scripts/train.py ]; then
+                            python3 /workspace/scripts/train.py
+                          else
+                            python3 train.py
+                          fi
                       env:
                         - name: PYTHONUNBUFFERED
                           value: "1"
@@ -29,3 +112,6 @@ spec:
                           valueFrom:
                             fieldRef:
                               fieldPath: metadata.namespace
+                      volumeMounts:
+                        - name: shared-env
+                          mountPath: /shared-env
