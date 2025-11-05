@@ -23,6 +23,38 @@ spec:
                   containers:
                     - name: node
                       image: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
+                      command:
+                        - bash
+                        - -c
+                        - |
+                          echo "==========================================="
+                          echo "🔧 PyTorch 분산 학습 환경 설정"
+                          echo "==========================================="
+
+                          # PET 환경변수를 PyTorch 표준 환경변수로 변환
+                          export RANK=${PET_NODE_RANK:-0}
+                          export WORLD_SIZE=${PET_NNODES:-1}
+                          export MASTER_ADDR=${PET_MASTER_ADDR:-localhost}
+                          export MASTER_PORT=${PET_MASTER_PORT:-29500}
+                          export LOCAL_RANK=0
+                          export NCCL_DEBUG=INFO
+
+                          echo "✅ PyTorch 환경변수 설정 완료!"
+                          echo "  - RANK: $RANK"
+                          echo "  - WORLD_SIZE: $WORLD_SIZE"
+                          echo "  - MASTER_ADDR: $MASTER_ADDR"
+                          echo "  - MASTER_PORT: $MASTER_PORT"
+                          echo "  - LOCAL_RANK: $LOCAL_RANK"
+                          echo "==========================================="
+                          echo ""
+
+                          # 사용자 학습 코드 실행
+                          # TrainJob의 podTemplateOverrides에서 /workspace/scripts를 마운트하면 해당 경로 사용
+                          if [ -f /workspace/scripts/train.py ]; then
+                            python /workspace/scripts/train.py
+                          else
+                            python train.py
+                          fi
                       env:
                         - name: PYTHONUNBUFFERED
                           value: "1"
