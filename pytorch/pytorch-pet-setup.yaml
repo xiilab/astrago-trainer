@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pytorch-pet-setup
+  namespace: kubeflow-system
+data:
+  setup_pytorch_env.sh: |
+    #!/bin/bash
+    # PyTorch 분산 학습용 환경변수 설정 스크립트
+    # Kubeflow Training Operator v2의 PET 환경변수를 PyTorch 표준으로 변환
+
+    set -e
+
+    echo "==========================================="
+    echo "🔧 PyTorch 분산 학습 환경 설정 시작"
+    echo "==========================================="
+
+    # PET 환경변수 확인
+    if [ -z "$PET_NODE_RANK" ]; then
+        echo "❌ PET 환경변수가 없습니다"
+        exit 1
+    fi
+
+    # PyTorch 표준 환경변수로 변환
+    export RANK=$PET_NODE_RANK
+    export WORLD_SIZE=$PET_NNODES
+    export MASTER_ADDR=$PET_MASTER_ADDR
+    export MASTER_PORT=$PET_MASTER_PORT
+    export LOCAL_RANK=0  # numProcPerNode=1이므로 항상 0
+
+    # PyTorch 분산 학습 백엔드 설정
+    export NCCL_DEBUG=INFO  # 디버깅용 (필요시 제거)
+
+    echo ""
+    echo "✅ PyTorch 환경변수 설정 완료!"
+    echo "  - RANK: $RANK"
+    echo "  - WORLD_SIZE: $WORLD_SIZE"
+    echo "  - MASTER_ADDR: $MASTER_ADDR"
+    echo "  - MASTER_PORT: $MASTER_PORT"
+    echo "  - LOCAL_RANK: $LOCAL_RANK"
+    echo "==========================================="
+    echo ""

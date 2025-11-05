@@ -1,0 +1,31 @@
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: ClusterTrainingRuntime
+metadata:
+  name: tensorflow-distributed
+  labels:
+    trainer.kubeflow.org/framework: tensorflow
+spec:
+  mlPolicy:
+    numNodes: 1  # 기본 단일 노드
+    # TensorFlow MultiWorkerMirroredStrategy는 자체 통신 사용 (MPI 불필요)
+  template:
+    spec:
+      replicatedJobs:
+        - name: node
+          template:
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer
+            spec:
+              template:
+                spec:
+                  containers:
+                    - name: node
+                      image: tensorflow/tensorflow:2.15.0-gpu
+                      env:
+                        - name: PYTHONUNBUFFERED
+                          value: "1"
+                        - name: NAMESPACE
+                          valueFrom:
+                            fieldRef:
+                              fieldPath: metadata.namespace

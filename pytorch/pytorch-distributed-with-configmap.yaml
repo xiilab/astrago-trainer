@@ -1,0 +1,53 @@
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: pytorch-distributed-configmap
+  namespace: kubeflow-system
+spec:
+  runtimeRef:
+    name: pytorch-simple
+  trainer:
+    image: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
+    command:
+      - bash
+      - -c
+      - |
+        # 1단계: PyTorch 환경변수 설정
+        source /shared/setup_pytorch_env.sh
+
+        # 2단계: 사용자 학습 코드 실행
+        python /workspace/scripts/train.py
+    numNodes: 2  # Runtime의 기본값(1) 오버라이드
+    # numProcPerNode 생략 → Runtime의 "auto" 사용
+    resourcesPerNode:
+      limits:
+        cpu: "4"
+        memory: "16Gi"
+        nvidia.com/gpu: "1"
+      requests:
+        cpu: "2"
+        memory: "8Gi"
+        nvidia.com/gpu: "1"
+  # PodTemplateOverride를 사용해서 두 개의 ConfigMap 볼륨 마운트
+  podTemplateOverrides:
+    - targetJobs:
+        - name: node
+      spec:
+        volumes:
+          - name: pytorch-pet-setup  # System ConfigMap
+            configMap:
+              name: pytorch-pet-setup
+              defaultMode: 0755
+          - name: train-script        # User ConfigMap
+            configMap:
+              name: pytorch-distributed-train-script
+              defaultMode: 0755
+        containers:
+          - name: node
+            volumeMounts:
+              - name: pytorch-pet-setup
+                mountPath: /shared
+                readOnly: true
+              - name: train-script
+                mountPath: /workspace/scripts
+                readOnly: true
