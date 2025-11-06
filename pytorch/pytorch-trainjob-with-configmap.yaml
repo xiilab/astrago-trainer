@@ -42,9 +42,9 @@ spec:
             configMap:
               name: pytorch-distributed-train-script
               defaultMode: 0755
-        # Runtime에 정의된 initContainer("git-clone-1")의 환경변수만 오버라이드 가능
+        # Runtime에 정의된 initContainer("git-clone-volume")의 환경변수만 오버라이드 가능
         initContainers:
-          - name: git-clone-1
+          - name: git-clone-volume
             env:
               - name: GIT_SYNC_REPO
                 value: https://github.com/horovod/horovod.git

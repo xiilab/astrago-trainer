@@ -21,10 +21,10 @@ spec:
               template:
                 spec:
                   volumes:
-                    - name: git-clone-1
+                    - name: git-clone-volume
                       emptyDir: {}
                   initContainers:
-                    - name: git-clone-1
+                    - name: git-clone-volume
                       image: alpine/git:v2.36.2
                       imagePullPolicy: IfNotPresent
                       command:
@@ -69,12 +69,12 @@ spec:
                       terminationMessagePolicy: File
                       volumeMounts:
                         - mountPath: /git
-                          name: git-clone-1
+                          name: git-clone-volume
                   containers:
                     - name: node
                       image: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
                       volumeMounts:
-                        - name: git-clone-1
+                        - name: git-clone-volume
                           mountPath: /git
                       env:
                         - name: PYTHONUNBUFFERED
