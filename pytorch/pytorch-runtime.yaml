@@ -31,27 +31,18 @@ spec:
                         - sh
                         - -c
                         - |
-                          set -e
-                          # Downward API annotation overrides (if present)
-                          if [ -n "$GIT_SYNC_REPO_ANNOT" ]; then GIT_SYNC_REPO="$GIT_SYNC_REPO_ANNOT"; fi
-                          if [ -n "$GIT_SYNC_BRANCH_ANNOT" ]; then GIT_SYNC_BRANCH="$GIT_SYNC_BRANCH_ANNOT"; fi
-                          if [ -n "$GIT_SYNC_ROOT_ANNOT" ]; then GIT_SYNC_ROOT="$GIT_SYNC_ROOT_ANNOT"; fi
-                          if [ -n "$COMMAND_ANNOT" ]; then COMMAND="$COMMAND_ANNOT"; fi
-
                           echo "[git-clone] repo=$GIT_SYNC_REPO branch=$GIT_SYNC_BRANCH root=$GIT_SYNC_ROOT"
                           git clone "$GIT_SYNC_REPO" --branch "$GIT_SYNC_BRANCH" "$GIT_SYNC_ROOT";
                           chmod -R 777 "$GIT_SYNC_ROOT";
                       env:
                         - name: GIT_SYNC_REPO
-                          value: https://github.com/xiilab/astrago-trainer.git
+                          value: https://github.com/horovod/horovod.git
                         - name: GIT_SYNC_BRANCH
-                          value: main
+                          value: adasum-gloo
                         - name: GIT_SYNC_MOUNT_PATH
                           value: "/horovod"
                         - name: REPOSITORY_TYPE
                           value: USER
-                        - name: COMMAND
-                          value: "python examples/pytorch/pytorch_mnist.py"
                         - name: GIT_SYNC_TIMEOUT
                           value: "600"
                         - name: GIT_SYNC_ROOT
@@ -64,23 +55,6 @@ spec:
                           value: "true"
                         - name: SOURCE_CODE_ID
                           value: "1"
-                        # Annotation-driven overrides
-                        - name: GIT_SYNC_REPO_ANNOT
-                          valueFrom:
-                            fieldRef:
-                              fieldPath: metadata.annotations['trainer.kubeflow.org/git-sync-repo']
-                        - name: GIT_SYNC_BRANCH_ANNOT
-                          valueFrom:
-                            fieldRef:
-                              fieldPath: metadata.annotations['trainer.kubeflow.org/git-sync-branch']
-                        - name: GIT_SYNC_ROOT_ANNOT
-                          valueFrom:
-                            fieldRef:
-                              fieldPath: metadata.annotations['trainer.kubeflow.org/git-sync-root']
-                        - name: COMMAND_ANNOT
-                          valueFrom:
-                            fieldRef:
-                              fieldPath: metadata.annotations['trainer.kubeflow.org/git-sync-command']
                       resources:
                         limits:
                           cpu: 500m
@@ -99,6 +73,7 @@ spec:
                       volumeMounts:
                         - name: git-clone-volume
                           mountPath: /git
+                          subPath: code
                         # train-script는 TrainJob에서 필요시 추가 (현재는 git-clone 사용)
                       env:
                         - name: PYTHONUNBUFFERED

@@ -18,7 +18,7 @@ spec:
         echo "TF_CONFIG: $TF_CONFIG"
 
         # Git repo에서 학습 코드 실행
-        cd /git/code
+        cd /test
         python3 tensorflow/train.py
     resourcesPerNode:
       limits:
@@ -40,18 +40,23 @@ spec:
               name: tensorflow-distributed-train-script
               defaultMode: 0755
         initContainers:
+          - name: git-clone
+            env:
+              - name: GIT_SYNC_REPO
+                value: https://github.com/xiilab/astrago-trainer.git
+              - name: GIT_SYNC_BRANCH
+                value: main
           # 기존 Runtime의 tf-config-generator에 필드 오버라이드 예시 (머지 대상)
           - name: tf-config-generator
             env:
-              # PET_NNODES는 Runtime의 valueFrom이 자동으로 label에서 읽어옴 (numNodes: 2 설정 시)
               - name: TF_PORT
                 value: "2333"  # Runtime 기본값을 오버라이드
         # NOTE: CRD 제약으로 Pod 메타데이터 오버라이드는 지원되지 않음
         containers:
           - name: node
             volumeMounts:
-              - name: train-script
-                mountPath: /workspace/scripts
-                readOnly: true
+              - name: git-clone-volume
+                mountPath: /test
+                subPath: code
 
 

@@ -165,6 +165,7 @@ spec:
                           mountPath: /shared-env
                         - name: git-clone-volume
                           mountPath: /git
+                          subPath: code
                       env:
                         - name: PYTHONUNBUFFERED
                           value: "1"
