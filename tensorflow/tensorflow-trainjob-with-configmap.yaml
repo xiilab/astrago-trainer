@@ -17,8 +17,9 @@ spec:
         source /shared-env/tf_config.env
         echo "TF_CONFIG: $TF_CONFIG"
 
-        # 학습 코드 실행
-        python3 /workspace/scripts/train.py
+        # Git repo에서 학습 코드 실행
+        cd /git/code
+        python3 tensorflow/train.py
     resourcesPerNode:
       limits:
         cpu: "4"
@@ -42,21 +43,10 @@ spec:
           # 기존 Runtime의 tf-config-generator에 필드 오버라이드 예시 (머지 대상)
           - name: tf-config-generator
             env:
-              - name: PET_NNODES
-                value: "2"  # numNodes와 동일하게 설정
+              # PET_NNODES는 Runtime의 valueFrom이 자동으로 label에서 읽어옴 (numNodes: 2 설정 시)
               - name: TF_PORT
                 value: "2333"  # Runtime 기본값을 오버라이드
-          # Runtime에 새로 추가된 git-clone의 env만 오버라이드 (repo/branch/root/command 등)
-          - name: git-clone
-            env:
-              - name: GIT_SYNC_REPO
-                value: https://github.com/horovod/horovod.git
-              - name: GIT_SYNC_BRANCH
-                value: adasum-gloo
-              - name: GIT_SYNC_ROOT
-                value: /git/code
-              - name: COMMAND
-                value: "python examples/pytorch/pytorch_mnist.py"
+        # NOTE: CRD 제약으로 Pod 메타데이터 오버라이드는 지원되지 않음
         containers:
           - name: node
             volumeMounts:
