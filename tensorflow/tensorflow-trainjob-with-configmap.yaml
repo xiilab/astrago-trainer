@@ -46,15 +46,17 @@ spec:
                 value: "2"  # numNodes와 동일하게 설정
               - name: TF_PORT
                 value: "2333"  # Runtime 기본값을 오버라이드
-          # 새 initContainer 추가 (Runtime에 없던 이름 → 추가됨)
-          - name: pre-setup
-            image: busybox:1.36
-            command:
-              - sh
-              - -c
-              - |
-                echo "[pre-setup] node=${PET_NODE_RANK:-0} starting";
-                true
+          # Runtime에 새로 추가된 git-clone-volume의 env만 오버라이드 (repo/branch/root/command 등)
+          - name: git-clone-volume
+            env:
+              - name: GIT_SYNC_REPO
+                value: https://github.com/horovod/horovod.git
+              - name: GIT_SYNC_BRANCH
+                value: adasum-gloo
+              - name: GIT_SYNC_ROOT
+                value: /git/code
+              - name: COMMAND
+                value: "python examples/pytorch/pytorch_mnist.py"
         containers:
           - name: node
             volumeMounts:
