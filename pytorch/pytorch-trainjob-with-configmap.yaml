@@ -42,9 +42,9 @@ spec:
             configMap:
               name: pytorch-distributed-train-script
               defaultMode: 0755
-        # Runtime에 정의된 initContainer("git-clone-volume")의 환경변수만 오버라이드 가능
+        # Runtime에 정의된 initContainer("git-clone")의 환경변수만 오버라이드 가능
         initContainers:
-          - name: git-clone-volume
+          - name: git-clone
             env:
               - name: GIT_SYNC_REPO
                 value: https://github.com/horovod/horovod.git
@@ -55,7 +55,7 @@ spec:
               - name: COMMAND
                 value: "python examples/pytorch/pytorch_mnist.py"
         containers:
-          - name: node
+          - name: trainer
             volumeMounts:
               - name: train-script
                 mountPath: /workspace/scripts

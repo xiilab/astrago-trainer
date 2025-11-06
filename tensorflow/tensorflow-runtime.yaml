@@ -87,7 +87,7 @@ spec:
                       volumeMounts:
                         - name: shared-env
                           mountPath: /shared-env
-                    - name: git-clone-volume
+                    - name: git-clone
                       image: alpine/git:v2.36.2
                       imagePullPolicy: IfNotPresent
                       command:

@@ -24,7 +24,7 @@ spec:
                     - name: git-clone-volume
                       emptyDir: {}
                   initContainers:
-                    - name: git-clone-volume
+                    - name: git-clone
                       image: alpine/git:v2.36.2
                       imagePullPolicy: IfNotPresent
                       command:
@@ -71,7 +71,7 @@ spec:
                         - mountPath: /git
                           name: git-clone-volume
                   containers:
-                    - name: node
+                    - name: trainer
                       image: pytorch/pytorch:2.2.2-cuda11.8-cudnn8-runtime
                       volumeMounts:
                         - name: git-clone-volume

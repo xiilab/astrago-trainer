@@ -46,8 +46,8 @@ spec:
                 value: "2"  # numNodes와 동일하게 설정
               - name: TF_PORT
                 value: "2333"  # Runtime 기본값을 오버라이드
-          # Runtime에 새로 추가된 git-clone-volume의 env만 오버라이드 (repo/branch/root/command 등)
-          - name: git-clone-volume
+          # Runtime에 새로 추가된 git-clone의 env만 오버라이드 (repo/branch/root/command 등)
+          - name: git-clone
             env:
               - name: GIT_SYNC_REPO
                 value: https://github.com/horovod/horovod.git
