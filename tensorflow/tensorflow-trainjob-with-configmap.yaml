@@ -2,13 +2,13 @@ apiVersion: trainer.kubeflow.org/v1alpha1
 kind: TrainJob
 metadata:
   name: tensorflow-distributed-simple
-  namespace: kubeflow-system
+  namespace: ws-e46889b9-5220-45eb-87ff-5e80868fe3c5
 spec:
   runtimeRef:
     name: tensorflow-runtime
   trainer:
     image: tensorflow/tensorflow:2.15.0-gpu
-    numNodes: 2  # Runtime의 기본값(1) 오버라이드
+    numNodes: 3  # Runtime의 기본값(1) 오버라이드
     command:
       - bash
       - -c
@@ -39,6 +39,10 @@ spec:
             configMap:
               name: tensorflow-distributed-train-script
               defaultMode: 0755
+          - name: astrago-storage-pv-f6-2305-4a58-a987-2132febdab85
+            persistentVolumeClaim:
+              claimName: astrago-storage-pvc-d0-90d2-4108-be66-7bdd4329ed42
+              readOnly: false              
         initContainers:
           - name: git-clone
             env:
@@ -51,6 +55,8 @@ spec:
             env:
               - name: TF_PORT
                 value: "2333"  # Runtime 기본값을 오버라이드
+              - name: NUM_WORKERS
+                value: "3"  # TrainJob numNodes 값과 일치시킴
         # NOTE: CRD 제약으로 Pod 메타데이터 오버라이드는 지원되지 않음
         containers:
           - name: node
@@ -58,5 +64,6 @@ spec:
               - name: git-clone-volume
                 mountPath: /test
                 subPath: code
-
+              - mountPath: /datasets
+                name: astrago-storage-pv-f6-2305-4a58-a987-2132febdab85
 

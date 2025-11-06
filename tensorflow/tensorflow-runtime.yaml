@@ -39,29 +39,34 @@ spec:
                           echo "🔧 TF_CONFIG 생성 시작"
                           echo "=========================================="
 
-                          # Hostname에서 정보 추출
-                          HOSTNAME=$(hostname)
-                          echo "Hostname: $HOSTNAME"
-
-                          JOB_NAME=$(echo $HOSTNAME | sed 's/-node-0-.*//')
-                          WORKER_INDEX=$(echo $HOSTNAME | grep -o '[0-9]*$')
-                          NUM_WORKERS=${PET_NNODES:-1}
+                          # Job 정보 추출
+                          WORKER_INDEX=${JOB_COMPLETION_INDEX:-0}
+                          NUM_WORKERS=${NUM_WORKERS:-1}
                           NAMESPACE=${NAMESPACE:-default}
                           PORT=${TF_PORT:-2222}
 
-                          echo "Job Name: $JOB_NAME"
+                          # JobSet 이름 추출 (TrainJob 이름)
+                          # hostname 예: tensorflow-distributed-simple-node-0-0
+                          # JobSet 이름: tensorflow-distributed-simple
+                          JOBSET_NAME=$(hostname | sed 's/-node-0-[0-9]*$//')
+
+                          echo "JobSet Name: $JOBSET_NAME"
                           echo "Worker Index: $WORKER_INDEX"
                           echo "Total Workers: $NUM_WORKERS"
                           echo "Namespace: $NAMESPACE"
                           echo "Port: $PORT"
 
                           # Worker 목록 생성
+                          # Pod FQDN: {hostname}.{subdomain}.{namespace}.svc.cluster.local
+                          # hostname: {jobset-name}-node-0-{index}
+                          # subdomain: {jobset-name}
                           WORKERS="["
                           for i in $(seq 0 $((NUM_WORKERS-1))); do
                               if [ $i -gt 0 ]; then
                                   WORKERS="$WORKERS,"
                               fi
-                              WORKER_ADDR="${JOB_NAME}-node-0-${i}.${JOB_NAME}.${NAMESPACE}.svc.cluster.local:${PORT}"
+                              WORKER_HOSTNAME="${JOBSET_NAME}-node-0-${i}"
+                              WORKER_ADDR="${WORKER_HOSTNAME}.${JOBSET_NAME}.${NAMESPACE}.svc.cluster.local:${PORT}"
                               WORKERS="$WORKERS\\\"${WORKER_ADDR}\\\""
                           done
                           WORKERS="$WORKERS]"
@@ -80,10 +85,13 @@ spec:
                           valueFrom:
                             fieldRef:
                               fieldPath: metadata.namespace
-                        - name: PET_NNODES
-                          valueFrom:
-                            fieldRef:
-                              fieldPath: metadata.labels['trainer.kubeflow.org/num-nodes']
+                      resources:
+                        limits:
+                          cpu: 100m
+                          memory: 128Mi
+                        requests:
+                          cpu: 100m
+                          memory: 128Mi
                       volumeMounts:
                         - name: shared-env
                           mountPath: /shared-env
@@ -122,11 +130,11 @@ spec:
                           value: "1"
                       resources:
                         limits:
-                          cpu: 500m
-                          memory: 500Mi
+                          cpu: 100m
+                          memory: 128Mi
                         requests:
-                          cpu: 500m
-                          memory: 500Mi
+                          cpu: 100m
+                          memory: 128Mi
                       terminationMessagePath: /dev/termination-log
                       terminationMessagePolicy: File
                       volumeMounts:
