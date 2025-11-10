@@ -50,8 +50,3 @@ spec:
             volumeMounts:
               - name: git-clone-volume
                 mountPath: /test
-                subPath: code
-        # NOTE: Container 오버라이드 시 image 필드가 사라지는 문제로 인해
-        #       volumeMount는 Runtime에 직접 추가하거나 다른 방법 사용 필요
-
-

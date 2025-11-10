@@ -2,7 +2,7 @@ apiVersion: trainer.kubeflow.org/v1alpha1
 kind: TrainJob
 metadata:
   name: tensorflow-distributed-simple
-  namespace: ws-e46889b9-5220-45eb-87ff-5e80868fe3c5
+  namespace: kubeflow-system
 spec:
   runtimeRef:
     name: tensorflow-runtime
@@ -35,10 +35,6 @@ spec:
         - name: node
       spec:
         volumes:
-          - name: train-script  # 사용자 학습 코드
-            configMap:
-              name: tensorflow-distributed-train-script
-              defaultMode: 0755
           - name: astrago-storage-pv-f6-2305-4a58-a987-2132febdab85
             persistentVolumeClaim:
               claimName: astrago-storage-pvc-d0-90d2-4108-be66-7bdd4329ed42
@@ -63,7 +59,6 @@ spec:
             volumeMounts:
               - name: git-clone-volume
                 mountPath: /test
-                subPath: code
               - mountPath: /datasets
                 name: astrago-storage-pv-f6-2305-4a58-a987-2132febdab85
 
