@@ -20,7 +20,7 @@ spec:
               labels:
                 trainer.kubeflow.org/trainjob-ancestor-step: trainer
             spec:
-              ttlSecondsAfterFinished: 60  # 테스트: 완료 후 60초 뒤 자동 삭제 (Job + Pod)
+              ttlSecondsAfterFinished: 300  # 완료 후 5분 뒤 자동 삭제 (Job + Pod)
               template:
                 spec:
                   volumes:
