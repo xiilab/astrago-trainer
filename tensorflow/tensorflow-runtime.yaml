@@ -10,6 +10,8 @@ spec:
     # TensorFlow MultiWorkerMirroredStrategy는 자체 통신 사용 (MPI 불필요)
   template:
     spec:
+      successPolicy:
+        operator: All
       replicatedJobs:
         - name: node
           template:
@@ -17,6 +19,7 @@ spec:
               labels:
                 trainer.kubeflow.org/trainjob-ancestor-step: trainer
             spec:
+              ttlSecondsAfterFinished: 60  # 완료 후 60초 뒤 Pod 삭제
               template:
                 spec:
                   volumes:
@@ -146,9 +149,6 @@ spec:
                       volumeMounts:
                         - name: shared-env
                           mountPath: /shared-env
-                        - name: git-clone-volume
-                          mountPath: /git
-                          subPath: code
                       env:
                         - name: PYTHONUNBUFFERED
                           value: "1"
